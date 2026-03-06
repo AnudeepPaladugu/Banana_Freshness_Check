@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Banana Freshness Checker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/3.21.0/tf.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --yellow: #F5C518;
+    --yellow-dark: #C89D00;
+    --yellow-pale: #FFF8DC;
+    --brown: #3B2A1A;
+    --cream: #FFFDF4;
+    --green: #2D6A4F;
+    --red: #C0392B;
+    --orange: #E67E22;
+    --gray: #8C7B6B;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--cream);
+    color: var(--brown);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 600px 400px at 10% 20%, rgba(245,197,24,0.12) 0%, transparent 70%),
+      radial-gradient(ellipse 400px 600px at 90% 80%, rgba(245,197,24,0.08) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrapper {
+    position: relative;
+    z-index: 1;
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .banana-icon {
+    font-size: 56px;
+    display: block;
+    margin-bottom: 12px;
+    animation: sway 3s ease-in-out infinite;
+    transform-origin: top center;
+  }
+
+  @keyframes sway {
+    0%, 100% { transform: rotate(-5deg); }
+    50% { transform: rotate(5deg); }
+  }
+
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(2rem, 6vw, 3.2rem);
+    font-weight: 900;
+    color: var(--brown);
+    line-height: 1.1;
+    letter-spacing: -1px;
+  }
+
+  h1 span {
+    color: var(--yellow-dark);
+    display: block;
+  }
+
+  .subtitle {
+    margin-top: 10px;
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--gray);
+  }
+
+  /* Upload Zone */
+  .upload-zone {
+    border: 2.5px dashed var(--yellow-dark);
+    border-radius: 20px;
+    background: rgba(245, 197, 24, 0.06);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .upload-zone:hover, .upload-zone.dragover {
+    background: rgba(245, 197, 24, 0.14);
+    border-color: var(--yellow);
+    transform: scale(1.01);
+  }
+
+  .upload-zone input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .upload-icon { font-size: 40px; margin-bottom: 12px; display: block; }
+  .upload-text { font-size: 0.85rem; color: var(--gray); }
+  .upload-text strong { color: var(--brown); font-weight: 500; }
+
+  /* Camera button */
+  .btn-group {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  button {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 12px 24px;
+    border-radius: 50px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.25s ease;
+    font-weight: 500;
+  }
+
+  .btn-primary {
+    background: var(--yellow);
+    color: var(--brown);
+    border-color: var(--yellow-dark);
+  }
+
+  .btn-primary:hover {
+    background: var(--yellow-dark);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(200,157,0,0.3);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--brown);
+    border-color: var(--brown);
+  }
+
+  .btn-secondary:hover {
+    background: var(--brown);
+    color: var(--cream);
+    transform: translateY(-2px);
+  }
+
+  button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none !important;
+  }
+
+  /* Camera view */
+  #camera-section {
+    display: none;
+    margin-top: 20px;
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+    background: #000;
+  }
+
+  #camera-section video {
+    width: 100%;
+    display: block;
+    border-radius: 18px;
+  }
+
+  #snap-btn {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    border: 3px solid var(--yellow);
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    font-size: 1.4rem;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #snap-btn:hover {
+    background: var(--yellow);
+    transform: translateX(-50%) scale(1.1);
+    box-shadow: 0 4px 16px rgba(245,197,24,0.5);
+  }
+
+  /* Preview */
+  #preview-section {
+    display: none;
+    margin-top: 24px;
+    text-align: center;
+  }
+
+  #preview-img {
+    max-width: 100%;
+    max-height: 320px;
+    border-radius: 16px;
+    border: 3px solid var(--yellow);
+    box-shadow: 0 8px 32px rgba(59,42,26,0.15);
+    object-fit: cover;
+  }
+
+  /* Status bar */
+  #status {
+    margin-top: 20px;
+    padding: 14px 20px;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    display: none;
+    align-items: center;
+    gap: 10px;
+  }
+
+  #status.loading {
+    display: flex;
+    background: rgba(245,197,24,0.15);
+    border: 1px solid var(--yellow);
+    color: var(--brown);
+  }
+
+  #status.error {
+    display: flex;
+    background: rgba(192,57,43,0.08);
+    border: 1px solid var(--red);
+    color: var(--red);
+  }
+
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--yellow-dark);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Result card */
+  #result-card {
+    display: none;
+    margin-top: 24px;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(59,42,26,0.12);
+    animation: slideUp 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards;
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(30px) scale(0.95); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .result-header {
+    padding: 28px 28px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .result-emoji { font-size: 52px; line-height: 1; }
+
+  .result-label {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .result-sublabel {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-top: 4px;
+    opacity: 0.7;
+  }
+
+  .result-body { padding: 0 28px 28px; }
+
+  /* Confidence bars */
+  .conf-bar-wrap { margin-top: 12px; }
+  .conf-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 0.72rem;
+  }
+
+  .conf-label { width: 200px; flex-shrink: 0; color: inherit; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conf-track { flex: 1; height: 8px; border-radius: 4px; background: rgba(0,0,0,0.1); overflow: hidden; }
+  .conf-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.8s cubic-bezier(0.34,1.56,0.64,1);
+    width: 0;
+  }
+  .conf-pct { width: 40px; text-align: right; opacity: 0.8; flex-shrink: 0; }
+
+  /* Not banana card */
+  #not-banana-card {
+    display: none;
+    margin-top: 24px;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #3B2A1A 0%, #5C4033 100%);
+    color: var(--cream);
+    padding: 32px 28px;
+    text-align: center;
+    box-shadow: 0 12px 40px rgba(59,42,26,0.25);
+    animation: slideUp 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards;
+  }
+
+  #not-banana-card .big-emoji { font-size: 60px; display: block; margin-bottom: 12px; }
+
+  #not-banana-card h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  #not-banana-card p {
+    font-size: 0.8rem;
+    opacity: 0.7;
+    line-height: 1.6;
+    letter-spacing: 0.03em;
+    max-width: 360px;
+    margin: 0 auto;
+  }
+
+  .retry-btn-wrap {
+    margin-top: 20px;
+  }
+
+  /* Color themes per result */
+  .theme-fresh { background: linear-gradient(135deg, #F5C518 0%, #FFE566 100%); color: #3B2A1A; }
+  .theme-bad   { background: linear-gradient(135deg, #4A2C2A 0%, #6B3A35 100%); color: #FFF8DC; }
+  .theme-ripe  { background: linear-gradient(135deg, #2D6A4F 0%, #52B788 100%); color: #F0FFF4; }
+  .theme-avoid { background: linear-gradient(135deg, #7B4F12 0%, #B87333 100%); color: #FFF8DC; }
+
+  .theme-fresh .conf-fill { background: #C89D00; }
+  .theme-bad   .conf-fill { background: rgba(255,255,255,0.6); }
+  .theme-ripe  .conf-fill { background: #1B4332; }
+  .theme-avoid .conf-fill { background: rgba(255,255,255,0.6); }
+
+  /* Divider */
+  .divider {
+    height: 1px;
+    background: currentColor;
+    opacity: 0.15;
+    margin: 16px 0;
+  }
+
+  /* Disclaimer */
+  .disclaimer {
+    margin-top: 40px;
+    font-size: 0.68rem;
+    color: var(--gray);
+    text-align: center;
+    line-height: 1.6;
+    letter-spacing: 0.03em;
+  }
+
+  canvas { display: none; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <header>
+    <span class="banana-icon">🍌</span>
+    <h1>Banana<span>Freshness Check</span></h1>
+    <p class="subtitle">AI-powered · Bananas only</p>
+  </header>
+
+  <div class="upload-zone" id="upload-zone">
+    <input type="file" id="file-input" accept="image/*" />
+    <span class="upload-icon">📷</span>
+    <div class="upload-text">
+      <strong>Drop a banana photo here</strong><br>
+      or click to choose from your gallery
+    </div>
+  </div>
+
+  <div class="btn-group">
+    <button class="btn-primary" id="camera-btn">📸 Use Camera</button>
+    <button class="btn-secondary" id="reset-btn" style="display:none">↩ Try Another</button>
+  </div>
+
+  <div id="camera-section">
+    <video id="video" autoplay playsinline muted></video>
+    <button id="snap-btn">📸</button>
+  </div>
+
+  <div id="preview-section">
+    <img id="preview-img" alt="Preview" />
+  </div>
+
+  <div id="status"></div>
+
+  <div id="not-banana-card">
+    <span class="big-emoji">🚫</span>
+    <h2>Not a Banana!</h2>
+    <p>This model only analyses bananas. Please upload a clear photo of a banana and try again.</p>
+    <div class="retry-btn-wrap">
+      <button class="btn-primary" onclick="resetAll()">Try Again</button>
+    </div>
+  </div>
+
+  <div id="result-card"></div>
+
+  <canvas id="canvas"></canvas>
+
+  <p class="disclaimer">
+    ⚠️ This tool uses your uploaded Teachable Machine model + MobileNet banana verification.<br>
+    You must host <code>model.json</code> + <code>weights.bin</code> + <code>metadata.json</code> in the same folder as this file.
+  </p>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const MODEL_PATH = './model.json';           // your TM model
+const LABELS = [
+  { text: "Fresh Banana",    emoji: "🍌", theme: "theme-fresh", advice: "Perfectly fresh and ready to eat. Enjoy!" },
+  { text: "Throw it Away",   emoji: "🗑️", theme: "theme-bad",   advice: "This banana is past its best — toss it." },
+  { text: "Ripe & Ready",    emoji: "✅", theme: "theme-ripe",   advice: "Good to eat now. Sweet and perfectly ripe!" },
+  { text: "Overripe",        emoji: "⚠️", theme: "theme-avoid", advice: "Very overripe — better for banana bread than eating." },
+];
+
+// MobileNet class indices for banana (ImageNet class 954)
+const BANANA_CLASS_INDEX = 954;
+const BANANA_CONFIDENCE_THRESHOLD = 0.15; // 15% — catches even partial views
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let tmModel = null;
+let mobileNet = null;
+let stream = null;
+let modelsLoading = false;
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const uploadZone   = document.getElementById('upload-zone');
+const fileInput    = document.getElementById('file-input');
+const cameraBtn    = document.getElementById('camera-btn');
+const resetBtn     = document.getElementById('reset-btn');
+const cameraSection = document.getElementById('camera-section');
+const video        = document.getElementById('video');
+const snapBtn      = document.getElementById('snap-btn');
+const previewSection = document.getElementById('preview-section');
+const previewImg   = document.getElementById('preview-img');
+const statusEl     = document.getElementById('status');
+const resultCard   = document.getElementById('result-card');
+const notBananaCard = document.getElementById('not-banana-card');
+const canvas       = document.getElementById('canvas');
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+window.addEventListener('load', loadModels);
+
+async function loadModels() {
+  if (modelsLoading) return;
+  modelsLoading = true;
+  showStatus('loading', 'Loading AI models…');
+  try {
+    // Load MobileNet for banana detection
+    mobileNet = await tf.loadLayersModel(
+      'https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/model.json'
+    );
+
+    // Load the Teachable Machine model
+    tmModel = await tf.loadLayersModel(MODEL_PATH);
+
+    hideStatus();
+  } catch (e) {
+    // MobileNet might fail if offline — fall back to TM only
+    console.warn('MobileNet load failed, banana check disabled:', e);
+    mobileNet = null;
+    try {
+      tmModel = await tf.loadLayersModel(MODEL_PATH);
+      hideStatus();
+    } catch (e2) {
+      showStatus('error', '⚠️ Could not load model. Make sure model.json & weights.bin are in the same folder.');
+    }
+  }
+  modelsLoading = false;
+}
+
+// ── FILE UPLOAD ───────────────────────────────────────────────────────────────
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) handleImageFile(e.target.files[0]);
+});
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) handleImageFile(e.dataTransfer.files[0]);
+});
+
+function handleImageFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => analyseImage(ev.target.result);
+  reader.readAsDataURL(file);
+}
+
+// ── CAMERA ────────────────────────────────────────────────────────────────────
+cameraBtn.addEventListener('click', async () => {
+  if (cameraSection.style.display === 'block') {
+    stopCamera();
+    return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    video.srcObject = stream;
+    cameraSection.style.display = 'block';
+    cameraBtn.textContent = '✖ Close Camera';
+  } catch {
+    showStatus('error', '⚠️ Camera access denied. Please allow camera permission and try again.');
+  }
+});
+
+snapBtn.addEventListener('click', () => {
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  stopCamera();
+  analyseImage(canvas.toDataURL('image/jpeg'));
+});
+
+function stopCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  cameraSection.style.display = 'none';
+  cameraBtn.textContent = '📸 Use Camera';
+}
+
+resetBtn.addEventListener('click', resetAll);
+
+// ── ANALYSE ───────────────────────────────────────────────────────────────────
+async function analyseImage(src) {
+  resetResults();
+  showImage(src);
+  showStatus('loading', 'Checking image…');
+
+  if (!tmModel) {
+    await loadModels();
+    if (!tmModel) return;
+  }
+
+  const img = new Image();
+  img.onload = async () => {
+    try {
+      // Step 1: Banana check with MobileNet
+      if (mobileNet) {
+        showStatus('loading', 'Verifying this is a banana…');
+        const isBanana = await checkIsBanana(img);
+        if (!isBanana) {
+          hideStatus();
+          notBananaCard.style.display = 'block';
+          resetBtn.style.display = 'inline-block';
+          return;
+        }
+      }
+
+      // Step 2: Run TM model
+      showStatus('loading', 'Analysing banana freshness…');
+      const predictions = await runTMModel(img);
+      hideStatus();
+      showResult(predictions);
+      resetBtn.style.display = 'inline-block';
+    } catch (err) {
+      showStatus('error', '⚠️ Analysis failed. ' + err.message);
+    }
+  };
+  img.src = src;
+}
+
+async function checkIsBanana(img) {
+  return tf.tidy(() => {
+    const tensor = tf.browser.fromPixels(img)
+      .resizeBilinear([224, 224])
+      .toFloat()
+      .div(127.5)
+      .sub(1)
+      .expandDims(0);
+    const preds = mobileNet.predict(tensor);
+    const data = preds.dataSync();
+    const bananaScore = data[BANANA_CLASS_INDEX];
+    console.log('Banana confidence:', bananaScore);
+    return bananaScore >= BANANA_CONFIDENCE_THRESHOLD;
+  });
+}
+
+async function runTMModel(img) {
+  return tf.tidy(() => {
+    const tensor = tf.browser.fromPixels(img)
+      .resizeBilinear([224, 224])
+      .toFloat()
+      .div(255)
+      .expandDims(0);
+    const preds = tmModel.predict(tensor);
+    return Array.from(preds.dataSync());
+  });
+}
+
+// ── DISPLAY ───────────────────────────────────────────────────────────────────
+function showImage(src) {
+  previewImg.src = src;
+  previewSection.style.display = 'block';
+}
+
+function showResult(predictions) {
+  const topIdx = predictions.indexOf(Math.max(...predictions));
+  const label = LABELS[topIdx] || { text: 'Unknown', emoji: '❓', theme: 'theme-fresh', advice: '' };
+
+  const html = `
+    <div class="result-header ${label.theme}">
+      <span class="result-emoji">${label.emoji}</span>
+      <div>
+        <div class="result-label">${label.text}</div>
+        <div class="result-sublabel">Banana Analysis Result</div>
+      </div>
+    </div>
+    <div class="result-body ${label.theme}">
+      <p style="font-size:0.82rem;line-height:1.6;opacity:0.85;">${label.advice}</p>
+      <div class="divider"></div>
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;opacity:0.6;margin-bottom:8px;">Confidence breakdown</div>
+      <div class="conf-bar-wrap">
+        ${predictions.map((p, i) => {
+          const l = LABELS[i] || { text: `Class ${i}`, emoji: '' };
+          const pct = Math.round(p * 100);
+          return `
+            <div class="conf-row">
+              <span class="conf-label">${l.emoji} ${l.text}</span>
+              <div class="conf-track">
+                <div class="conf-fill" id="bar-${i}" style="width:0%"></div>
+              </div>
+              <span class="conf-pct">${pct}%</span>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+
+  resultCard.innerHTML = html;
+  resultCard.style.display = 'block';
+
+  // Animate bars after render
+  requestAnimationFrame(() => {
+    predictions.forEach((p, i) => {
+      const bar = document.getElementById(`bar-${i}`);
+      if (bar) {
+        setTimeout(() => { bar.style.width = (p * 100) + '%'; }, i * 80);
+      }
+    });
+  });
+}
+
+function resetResults() {
+  resultCard.style.display = 'none';
+  resultCard.innerHTML = '';
+  notBananaCard.style.display = 'none';
+  previewSection.style.display = 'none';
+  resetBtn.style.display = 'none';
+  hideStatus();
+}
+
+function resetAll() {
+  resetResults();
+  fileInput.value = '';
+  stopCamera();
+}
+
+function showStatus(type, msg) {
+  statusEl.className = type;
+  statusEl.style.display = 'flex';
+  statusEl.innerHTML = type === 'loading'
+    ? `<div class="spinner"></div><span>${msg}</span>`
+    : `<span>⚠️ ${msg}</span>`;
+}
+
+function hideStatus() {
+  statusEl.style.display = 'none';
+}
+</script>
+</body>
+</html>
